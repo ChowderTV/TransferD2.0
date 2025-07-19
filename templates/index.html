@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TransferD - Local Network File Transfer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">TransferD</h1>
+                <div class="ip-info">
+                    <span class="ip-label">Your IP: {{ local_ip }}:{{ port }}</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Panel - Devices -->
+            <section class="devices-panel">
+                <div class="panel-header">
+                    <h2>Available Devices</h2>
+                </div>
+                
+                <div class="device-list-container">
+                    <ul id="device-list" class="device-list">
+                        <!-- Devices will be populated here -->
+                    </ul>
+                </div>
+                
+                <!-- Manual Device Entry -->
+                <div class="manual-device">
+                    <div class="input-group">
+                        <input type="text" id="ip-input" placeholder="Enter IP:Port" class="ip-input">
+                        <button id="add-device-btn" class="btn btn-primary">Add</button>
+                    </div>
+                </div>
+                
+                <!-- Password Protection -->
+                <div class="password-section">
+                    <div class="input-group">
+                        <input type="password" id="password-input" placeholder="Optional Password" class="password-input">
+                        <button id="set-password-btn" class="btn btn-danger">Set</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel - Transfer -->
+            <section class="transfer-panel">
+                <!-- Text Message Section -->
+                <div class="message-section">
+                    <div class="section-header">
+                        <h3>Send Message/Link</h3>
+                    </div>
+                    <textarea id="message-input" placeholder="Type your message or paste a link..." class="message-textarea"></textarea>
+                    <button id="send-message-btn" class="btn btn-success">Send Text</button>
+                </div>
+
+                <!-- File Transfer Section -->
+                <div class="file-section">
+                    <div class="section-header">
+                        <h3>Send File</h3>
+                    </div>
+                    
+                    <div id="drop-area" class="drop-area">
+                        <div class="drop-content">
+                            <svg class="upload-icon" viewBox="0 0 24 24" width="48" height="48">
+                                <path fill="currentColor" d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                            </svg>
+                            <p class="drop-text">Drag & Drop Files Here</p>
+                            <p class="drop-subtext">(or click to browse)</p>
+                        </div>
+                        <input type="file" id="file-input" class="file-input" multiple>
+                    </div>
+                </div>
+
+                <!-- Status Section -->
+                <div class="status-section">
+                    <div class="section-header">
+                        <h3>Status</h3>
+                    </div>
+                    <div id="status-log" class="status-log"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Messages Modal -->
+        <div id="message-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Received Message</h3>
+                    <span id="close-modal" class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p id="received-message"></p>
+                    <div class="modal-timestamp" id="message-timestamp"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="progress-container" class="progress-container" style="display: none;">
+            <div class="progress-bar">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <div id="progress-text" class="progress-text">Uploading...</div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

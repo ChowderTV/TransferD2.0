@@ -1,0 +1,65 @@
+# Ignore original tkinter version
+transfer_app.py
+run.sh
+requirements.txt
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Downloads directory (will be mounted as volume)
+downloads/
+
+# Development files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
