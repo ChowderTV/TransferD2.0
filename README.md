@@ -6,11 +6,19 @@ A simple, secure local network file and message transfer application. Available 
 
 ### Docker Deployment (Easiest)
 ```bash
+# Download docker-compose.yml
+curl -O https://raw.githubusercontent.com/ChowderTV/TransferD2.0/main/docker-compose.yml
+
 # Deploy with Docker Compose
 docker-compose up -d
 
 # Access from any browser
 open http://localhost:8080
+```
+
+### One-Line Deployment
+```bash
+curl -sSL https://raw.githubusercontent.com/ChowderTV/TransferD2.0/main/docker-compose.yml | docker-compose -f - up -d
 ```
 
 ### Manual Web Setup
@@ -135,6 +143,28 @@ TransferD2.0/
 | **Remote Access** | ✅ Any network device | ❌ Local desktop only |
 | **Modern UI** | ✅ CSS3 + animations | ❌ Limited tkinter styling |
 
+## 🐳 Docker Registry Details
+
+**Image Location**: `ghcr.io/chowdertv/transferd2.0:latest`  
+**Registry**: GitHub Container Registry (ghcr.io)  
+**Supported Platforms**: linux/amd64, linux/arm64  
+**Auto-builds**: Triggered on every push to main branch  
+
+### Available Tags:
+- `latest` - Latest stable release from main branch
+- `v2.x.x` - Specific version releases
+- `main` - Development branch builds
+
+### Manual Docker Run:
+```bash
+docker run -d \
+  --name transferd \
+  -p 8080:8080 \
+  -p 8081:8081 \
+  -v ./downloads:/app/downloads \
+  ghcr.io/chowdertv/transferd2.0:latest
+```
+
 ## 🚨 Troubleshooting
 
 ### Web Version
@@ -142,6 +172,7 @@ TransferD2.0/
 - **Mobile issues**: Use computer's IP, not `localhost`
 - **Upload fails**: Check file size under 100MB
 - **Docker issues**: Run `docker-compose logs transferd`
+- **Image pull fails**: Ensure internet connection for registry access
 
 ### Desktop Version
 - **No drag & drop**: Install `tkinterdnd2` or click to browse
