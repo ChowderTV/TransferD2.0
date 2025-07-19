@@ -1,9 +1,28 @@
 #!/usr/bin/env python3
 """
-Simple Local Network File Transfer Application
-A lightweight tool for transferring files and messages between devices on the same network.
+=============================================================================
+                    TransferD 2.0 - Local Network File Transfer
+=============================================================================
+
+A secure, lightweight GUI application for transferring files and messages 
+between devices on the same local network.
+
+Features:
+- Drag & drop file transfers
+- Text message/link sharing
+- Automatic device discovery (Zeroconf)
+- Password protection
+- Rate limiting & security controls
+- Real-time status updates
+
+Main GUI components are located in the setup_ui() method for easy styling.
 """
 
+# =============================================================================
+#                                  IMPORTS
+# =============================================================================
+
+# GUI Framework
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 try:
@@ -12,6 +31,8 @@ try:
 except ImportError:
     DND_AVAILABLE = False
     print("tkinterdnd2 not available. Install with: pip install tkinterdnd2")
+
+# Core Python Libraries
 import threading
 import socket
 import json
@@ -20,23 +41,37 @@ import hashlib
 import base64
 from pathlib import Path
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import urllib.parse
-import urllib.request
-from cryptography.fernet import Fernet
-from zeroconf import ServiceBrowser, ServiceInfo, Zeroconf
-import websockets
-import websockets.server
-import asyncio
 import io
 import re
 import secrets
 from collections import defaultdict, deque
 
+# Network & Web
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import urllib.parse
+import urllib.request
+import websockets
+import websockets.server
+import asyncio
+
+# Security & Encryption
+from cryptography.fernet import Fernet
+
+# Network Discovery
+from zeroconf import ServiceBrowser, ServiceInfo, Zeroconf
+
+# =============================================================================
+#                            CONFIGURATION & CONSTANTS
+# =============================================================================
+
 # Rate limiting configuration
 RATE_LIMIT_WINDOW = 60  # 1 minute window
 MAX_REQUESTS_PER_MINUTE = 10
 MAX_UPLOAD_SIZE_PER_MINUTE = 50 * 1024 * 1024  # 50MB per minute
+
+# =============================================================================
+#                         SECURITY & UTILITY CLASSES
+# =============================================================================
 
 class RateLimiter:
     def __init__(self):
@@ -75,6 +110,7 @@ class RateLimiter:
 
 rate_limiter = RateLimiter()
 
+# Security Functions
 def sanitize_filename(filename):
     """Sanitize filename to prevent path traversal attacks"""
     if not filename:
@@ -144,6 +180,10 @@ def sanitize_text_message(text):
     text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
     
     return text
+
+# =============================================================================
+#                            HTTP SERVER HANDLER
+# =============================================================================
 
 class FileTransferServer(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -239,6 +279,10 @@ class FileTransferServer(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b'TransferD Server Running')
 
+# =============================================================================
+#                          NETWORK DISCOVERY CLASSES
+# =============================================================================
+
 class DeviceListener:
     def __init__(self, app):
         self.app = app
@@ -253,7 +297,15 @@ class DeviceListener:
     def remove_service(self, zc, type_, name):
         pass
 
+# =============================================================================
+#                           MAIN GUI APPLICATION CLASS
+# =============================================================================
+
 class TransferApp:
+    # -------------------------------------------------------------------------
+    #                            INITIALIZATION
+    # -------------------------------------------------------------------------
+    
     def __init__(self):
         if DND_AVAILABLE:
             self.root = TkinterDnD.Tk()
@@ -281,6 +333,10 @@ class TransferApp:
         self.start_websocket_server()
         self.start_discovery()
     
+    # -------------------------------------------------------------------------
+    #                           NETWORK CONFIGURATION
+    # -------------------------------------------------------------------------
+    
     def get_local_ip(self):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -291,16 +347,23 @@ class TransferApp:
         except:
             return "127.0.0.1"
     
+    # -------------------------------------------------------------------------
+    #                     🎨 GUI SETUP AND STYLING SECTION 🎨
+    #                    (Main area for UI styling work)
+    # -------------------------------------------------------------------------
+    
     def setup_ui(self):
+        # Configure main theme and colors
         style = ttk.Style()
         style.theme_use('clam')
         style.configure('TLabel', background='#2c3e50', foreground='white')
         style.configure('TFrame', background='#2c3e50')
         
+        # Main container frame
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Header
+        # Application header with title and IP display
         header_frame = ttk.Frame(main_frame)
         header_frame.pack(fill=tk.X, pady=(0, 10))
         
@@ -310,11 +373,11 @@ class TransferApp:
         ip_label = ttk.Label(header_frame, text=f"Your IP: {self.local_ip}:{self.port}", font=('Arial', 10))
         ip_label.pack(side=tk.RIGHT)
         
-        # Main content
+        # Main content area (two-panel layout)
         content_frame = ttk.Frame(main_frame)
         content_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Left panel - Devices
+        # LEFT PANEL: Device discovery and connection
         left_frame = ttk.LabelFrame(content_frame, text="Available Devices", padding=10)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
@@ -322,7 +385,7 @@ class TransferApp:
         self.device_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         self.device_listbox.bind('<<ListboxSelect>>', self.on_device_select)
         
-        # Manual IP entry and password
+        # Manual device connection controls
         manual_frame = ttk.Frame(left_frame)
         manual_frame.pack(fill=tk.X, pady=(0, 5))
         
@@ -334,7 +397,7 @@ class TransferApp:
                            bg='#3498db', fg='white', relief=tk.FLAT)
         add_btn.pack(side=tk.RIGHT)
         
-        # Password protection
+        # Password protection controls
         password_frame = ttk.Frame(left_frame)
         password_frame.pack(fill=tk.X)
         
@@ -346,11 +409,11 @@ class TransferApp:
                                bg='#e74c3c', fg='white', relief=tk.FLAT)
         set_pwd_btn.pack(side=tk.RIGHT)
         
-        # Right panel - Transfer
+        # RIGHT PANEL: File and message transfer
         right_frame = ttk.LabelFrame(content_frame, text="Transfer", padding=10)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
         
-        # Text message area
+        # Text message and link sharing section
         text_frame = ttk.LabelFrame(right_frame, text="Send Message/Link", padding=5)
         text_frame.pack(fill=tk.X, pady=(0, 10))
         
@@ -361,7 +424,7 @@ class TransferApp:
                                  bg='#27ae60', fg='white', relief=tk.FLAT)
         send_text_btn.pack()
         
-        # File drop area
+        # Drag & drop file transfer section
         file_frame = ttk.LabelFrame(right_frame, text="Send File", padding=5)
         file_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
@@ -370,19 +433,23 @@ class TransferApp:
         self.drop_area.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         self.drop_area.bind('<Button-1>', self.browse_file)
         
-        # Enable drag and drop
+        # Configure drag and drop functionality
         if DND_AVAILABLE:
             self.drop_area.drop_target_register(DND_FILES)
             self.drop_area.dnd_bind('<<Drop>>', self.on_file_drop)
         else:
             self.drop_area.config(text="Click to browse files\n(Drag & drop requires tkinterdnd2)")
         
-        # Status area
+        # Status and activity log section
         status_frame = ttk.LabelFrame(right_frame, text="Status", padding=5)
         status_frame.pack(fill=tk.X)
         
         self.status_text = tk.Text(status_frame, height=4, bg='#34495e', fg='white', state=tk.DISABLED)
         self.status_text.pack(fill=tk.X)
+    
+    # -------------------------------------------------------------------------
+    #                           DEVICE MANAGEMENT
+    # -------------------------------------------------------------------------
     
     def add_discovered_device(self, ip, port):
         device_info = f"{ip}:{port}"
@@ -413,6 +480,10 @@ class TransferApp:
         if selection:
             self.selected_device = self.devices[selection[0]]
             self.log_status(f"Selected device: {self.selected_device}")
+    
+    # -------------------------------------------------------------------------
+    #                          FILE TRANSFER OPERATIONS
+    # -------------------------------------------------------------------------
     
     def browse_file(self, event=None):
         file_path = filedialog.askopenfilename(
@@ -475,6 +546,10 @@ class TransferApp:
         
         threading.Thread(target=upload, daemon=True).start()
     
+    # -------------------------------------------------------------------------
+    #                           TEXT MESSAGE HANDLING
+    # -------------------------------------------------------------------------
+    
     def send_text(self):
         if not self.selected_device:
             messagebox.showwarning("No Device", "Please select a device first")
@@ -519,11 +594,19 @@ class TransferApp:
             
             threading.Thread(target=send_message, daemon=True).start()
     
+    # -------------------------------------------------------------------------
+    #                            STATUS & LOGGING
+    # -------------------------------------------------------------------------
+    
     def log_status(self, message):
         self.status_text.config(state=tk.NORMAL)
         self.status_text.insert(tk.END, f"{time.strftime('%H:%M:%S')} - {message}\n")
         self.status_text.see(tk.END)
         self.status_text.config(state=tk.DISABLED)
+    
+    # -------------------------------------------------------------------------
+    #                            SERVER MANAGEMENT
+    # -------------------------------------------------------------------------
     
     def start_server(self):
         def run_server():
@@ -559,6 +642,10 @@ class TransferApp:
             self.log_status("Password protection disabled")
         self.password_entry.delete(0, tk.END)
         self.password_entry.insert(0, "Optional Password")
+    
+    # -------------------------------------------------------------------------
+    #                           WEBSOCKET HANDLING
+    # -------------------------------------------------------------------------
     
     def start_websocket_server(self):
         async def handle_message(websocket, path):
@@ -616,6 +703,10 @@ class TransferApp:
         threading.Thread(target=run_websocket_server, daemon=True).start()
         self.log_status(f"WebSocket server started on {self.local_ip}:{self.port + 1}")
     
+    # -------------------------------------------------------------------------
+    #                          NETWORK DISCOVERY SERVICE
+    # -------------------------------------------------------------------------
+    
     def start_discovery(self):
         try:
             self.zeroconf = Zeroconf()
@@ -638,6 +729,10 @@ class TransferApp:
         except Exception:
             self.log_status("Device discovery failed")
     
+    # -------------------------------------------------------------------------
+    #                          APPLICATION LIFECYCLE
+    # -------------------------------------------------------------------------
+    
     def run(self):
         try:
             self.root.mainloop()
@@ -659,6 +754,10 @@ class TransferApp:
                     self.zeroconf.close()
             except:
                 pass
+
+# =============================================================================
+#                           APPLICATION ENTRY POINT
+# =============================================================================
 
 if __name__ == "__main__":
     app = TransferApp()
