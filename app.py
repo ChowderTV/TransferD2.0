@@ -218,7 +218,7 @@ class TransferDWeb:
         device_info = f"{ip}:{port}"
         if device_info not in self.devices and ip != self.local_ip:
             self.devices.append(device_info)
-            socketio.emit('device_discovered', {'device': device_info}, broadcast=True)
+            socketio.emit('device_discovered', {'device': device_info})
             self.log_status(f"Discovered device: {device_info}")
     
     def log_status(self, message):
@@ -226,7 +226,7 @@ class TransferDWeb:
         socketio.emit('status_update', {
             'timestamp': timestamp,
             'message': message
-        }, broadcast=True)
+        })
     
     def start_discovery(self):
         def discovery_thread():
@@ -283,7 +283,7 @@ class TransferDWeb:
                                     socketio.emit('message_received', {
                                         'message': sanitized_text,
                                         'timestamp': time.strftime('%H:%M:%S')
-                                    }, broadcast=True)
+                                    })
                                     self.log_status(f"Received message: {sanitized_text[:50]}...")
                                 else:
                                     self.log_status("Received invalid message content")
@@ -294,7 +294,7 @@ class TransferDWeb:
                                     socketio.emit('message_received', {
                                         'message': sanitized_text,
                                         'timestamp': time.strftime('%H:%M:%S')
-                                    }, broadcast=True)
+                                    })
                                     self.log_status(f"Received message: {sanitized_text[:50]}...")
                         except json.JSONDecodeError:
                             # Legacy support for plain text messages
@@ -303,7 +303,7 @@ class TransferDWeb:
                                 socketio.emit('message_received', {
                                     'message': sanitized_text,
                                     'timestamp': time.strftime('%H:%M:%S')
-                                }, broadcast=True)
+                                })
                                 self.log_status(f"Received message: {sanitized_text[:50]}...")
                             
                     except Exception:
