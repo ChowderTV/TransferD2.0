@@ -65,6 +65,10 @@ class TransferDApp {
         this.socket.on('disconnect', () => {
             this.showToast('Disconnected from server', 'error');
         });
+        
+        this.socket.on('error', (data) => {
+            this.showToast(data.message || 'Socket error', 'error');
+        });
     }
     
     bindEvents() {

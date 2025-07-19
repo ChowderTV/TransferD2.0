@@ -18,8 +18,6 @@ from pathlib import Path
 from collections import defaultdict, deque
 from cryptography.fernet import Fernet
 from zeroconf import ServiceBrowser, ServiceInfo, Zeroconf
-import asyncio
-import websockets
 import urllib.request
 import urllib.parse
 
@@ -188,7 +186,6 @@ class TransferDWeb:
     def __init__(self):
         self.local_ip = self.get_local_ip()
         self.port = 8080
-        self.websocket_port = 8081
         self.devices = []
         self.encryption_key = Fernet.generate_key()
         self.cipher = Fernet(self.encryption_key)
@@ -202,7 +199,6 @@ class TransferDWeb:
         
         # Start services
         self.start_discovery()
-        self.start_websocket_server()
     
     def get_local_ip(self):
         try:
@@ -258,71 +254,6 @@ class TransferDWeb:
         
         threading.Thread(target=discovery_thread, daemon=True).start()
     
-    def start_websocket_server(self):
-        async def handle_message(websocket, path):
-            try:
-                async for message in websocket:
-                    try:
-                        decrypted = self.cipher.decrypt(message.encode()).decode()
-                        
-                        # Parse message JSON
-                        try:
-                            message_data = json.loads(decrypted)
-                            if isinstance(message_data, dict):
-                                text = message_data.get('text', '')
-                                auth = message_data.get('auth')
-                                
-                                # Check authentication if password is set
-                                if self.password and auth != self.password:
-                                    self.log_status("Received message with invalid authentication")
-                                    continue
-                                
-                                # Sanitize received text
-                                sanitized_text = sanitize_text_message(text)
-                                if sanitized_text:
-                                    socketio.emit('message_received', {
-                                        'message': sanitized_text,
-                                        'timestamp': time.strftime('%H:%M:%S')
-                                    })
-                                    self.log_status(f"Received message: {sanitized_text[:50]}...")
-                                else:
-                                    self.log_status("Received invalid message content")
-                            else:
-                                # Legacy support for plain text messages
-                                sanitized_text = sanitize_text_message(decrypted)
-                                if sanitized_text:
-                                    socketio.emit('message_received', {
-                                        'message': sanitized_text,
-                                        'timestamp': time.strftime('%H:%M:%S')
-                                    })
-                                    self.log_status(f"Received message: {sanitized_text[:50]}...")
-                        except json.JSONDecodeError:
-                            # Legacy support for plain text messages
-                            sanitized_text = sanitize_text_message(decrypted)
-                            if sanitized_text:
-                                socketio.emit('message_received', {
-                                    'message': sanitized_text,
-                                    'timestamp': time.strftime('%H:%M:%S')
-                                })
-                                self.log_status(f"Received message: {sanitized_text[:50]}...")
-                            
-                    except Exception:
-                        self.log_status("Failed to decrypt message")
-            except websockets.exceptions.ConnectionClosed:
-                pass
-        
-        def run_websocket_server():
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                start_server = websockets.serve(handle_message, "0.0.0.0", self.websocket_port)
-                loop.run_until_complete(start_server)
-                loop.run_forever()
-            except Exception as e:
-                self.log_status(f"WebSocket server error: {str(e)}")
-        
-        threading.Thread(target=run_websocket_server, daemon=True).start()
-        self.log_status(f"WebSocket server started on {self.local_ip}:{self.websocket_port}")
 
 class DeviceListener:
     def __init__(self, app):
@@ -574,29 +505,33 @@ def send_message():
         
         def send_async():
             try:
-                # Create message with authentication if password is set
+                # Create message data for Socket.IO
                 message_data = {
                     'text': sanitized_message,
                     'auth': transfer_app.password if transfer_app.password else None
                 }
                 
-                message_json = json.dumps(message_data)
-                encrypted_text = transfer_app.cipher.encrypt(message_json.encode()).decode()
+                # Send HTTP POST to target device's Socket.IO message endpoint
+                url = f"http://{validated_device}/api/receive_message"
+                payload = json.dumps(message_data)
                 
-                ip, port = validated_device.split(':')
-                websocket_port = int(port) + 1
+                req = urllib.request.Request(url, data=payload.encode('utf-8'))
+                req.add_header('Content-Type', 'application/json')
                 
-                async def send_ws_message():
-                    uri = f"ws://{ip}:{websocket_port}"
-                    async with websockets.connect(uri, timeout=10) as websocket:
-                        await websocket.send(encrypted_text)
+                # Add authentication if password is set
+                if transfer_app.password:
+                    req.add_header('Authorization', f'Bearer {transfer_app.password}')
                 
-                asyncio.run(send_ws_message())
-                transfer_app.log_status(f"Sent message to {validated_device}: {sanitized_message[:50]}...")
-            except websockets.exceptions.ConnectionClosed:
-                transfer_app.log_status("Connection closed")
-            except asyncio.TimeoutError:
-                transfer_app.log_status("Message timeout")
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    transfer_app.log_status(f"Sent message to {validated_device}: {sanitized_message[:50]}...")
+                    
+            except urllib.error.HTTPError as e:
+                if e.code == 401:
+                    transfer_app.log_status("Authentication failed")
+                else:
+                    transfer_app.log_status(f"HTTP error: {e.code}")
+            except urllib.error.URLError:
+                transfer_app.log_status("Connection failed")
             except Exception:
                 transfer_app.log_status("Failed to send message")
         
@@ -605,6 +540,45 @@ def send_message():
     
     except Exception:
         return jsonify({'error': 'Send failed'}), 500
+
+@app.route('/api/receive_message', methods=['POST'])
+def receive_message():
+    """Handle incoming messages from other devices via HTTP"""
+    try:
+        # Rate limiting
+        client_ip = get_client_ip()
+        if not rate_limiter.is_allowed(client_ip):
+            return jsonify({'error': 'Rate limit exceeded'}), 429
+        
+        # Authentication check
+        if not check_authentication(transfer_app.password):
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid JSON'}), 400
+        
+        message_text = data.get('text', '')
+        auth = data.get('auth')
+        
+        # Additional auth check from message data
+        if transfer_app.password and auth != transfer_app.password:
+            return jsonify({'error': 'Invalid authentication'}), 401
+        
+        # Sanitize and broadcast message
+        sanitized_text = sanitize_text_message(message_text)
+        if sanitized_text:
+            socketio.emit('message_received', {
+                'message': sanitized_text,
+                'timestamp': time.strftime('%H:%M:%S')
+            })
+            transfer_app.log_status(f"Received message from {client_ip}: {sanitized_text[:50]}...")
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Invalid message content'}), 400
+            
+    except Exception:
+        return jsonify({'error': 'Failed to process message'}), 500
 
 @app.route('/downloads/<path:filename>')
 def download_file(filename):
@@ -640,6 +614,41 @@ def handle_connect():
         'timestamp': time.strftime('%H:%M:%S'),
         'message': 'Connected to TransferD'
     })
+
+@socketio.on('message_text')
+def handle_message_text(data):
+    """Handle incoming text messages from Socket.IO clients"""
+    try:
+        # Rate limiting
+        client_ip = get_client_ip()
+        if not rate_limiter.is_allowed(client_ip):
+            emit('error', {'message': 'Rate limit exceeded'})
+            return
+        
+        # Authentication check
+        if transfer_app.password:
+            auth = data.get('auth')
+            if auth != transfer_app.password:
+                emit('error', {'message': 'Authentication required'})
+                return
+        
+        # Get and sanitize message text
+        message_text = data.get('text', '')
+        sanitized_text = sanitize_text_message(message_text)
+        
+        if sanitized_text:
+            # Broadcast received message to all clients
+            socketio.emit('message_received', {
+                'message': sanitized_text,
+                'timestamp': time.strftime('%H:%M:%S')
+            })
+            transfer_app.log_status(f"Received message: {sanitized_text[:50]}...")
+        else:
+            emit('error', {'message': 'Invalid message content'})
+            
+    except Exception as e:
+        transfer_app.log_status(f"Error handling message: {str(e)}")
+        emit('error', {'message': 'Failed to process message'})
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=8080, debug=False)
