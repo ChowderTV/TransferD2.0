@@ -26,12 +26,7 @@ app.config['SECRET_KEY'] = secrets.token_hex(32)  # Generate secure random key
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB limit
 
 # Restrict CORS to localhost and private networks only
-socketio = SocketIO(app, cors_allowed_origins=[
-    "http://localhost:8080",
-    "http://127.0.0.1:8080", 
-    # "http://192.168.1.100:8080",  # Replace with actual IP
-    # "http://10.0.0.5:8080",       # Replace with actual IP
-])
+socketio = SocketIO(app, cors_allowed_origins=["*"])
 
 # Rate limiting configuration
 RATE_LIMIT_WINDOW = 60  # 1 minute window
