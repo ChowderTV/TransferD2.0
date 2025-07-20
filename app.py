@@ -27,26 +27,10 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB limit
 
 # Restrict CORS to localhost and private networks only
 socketio = SocketIO(app, cors_allowed_origins=[
-    "http://localhost:*",
-    "http://127.0.0.1:*", 
-    "http://192.168.*:*",
-    "http://10.*:*",
-    "http://172.16.*:*",
-    "http://172.17.*:*",
-    "http://172.18.*:*",
-    "http://172.19.*:*",
-    "http://172.20.*:*",
-    "http://172.21.*:*",
-    "http://172.22.*:*",
-    "http://172.23.*:*",
-    "http://172.24.*:*",
-    "http://172.25.*:*",
-    "http://172.26.*:*",
-    "http://172.27.*:*",
-    "http://172.28.*:*",
-    "http://172.29.*:*",
-    "http://172.30.*:*",
-    "http://172.31.*:*"
+    "http://localhost:8080",
+    "http://127.0.0.1:8080", 
+    # "http://192.168.1.100:8080",  # Replace with actual IP
+    # "http://10.0.0.5:8080",       # Replace with actual IP
 ])
 
 # Rate limiting configuration
@@ -266,6 +250,10 @@ class DeviceListener:
             self.app.add_discovered_device(ip, info.port)
     
     def remove_service(self, zc, type_, name):
+        pass
+
+    def update_service(self, zc, type_, name):
+        # Required by Zeroconf to avoid FutureWarning
         pass
 
 # Initialize the app
