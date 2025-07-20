@@ -43,11 +43,12 @@ ENV PATH=/home/transferd/.local/bin:$PATH
 
 # Copy application files
 COPY app.py .
+COPY database.py .
 COPY templates/ templates/
 COPY static/ static/
 
-# Create downloads directory with proper permissions
-RUN mkdir -p /app/downloads && chown -R transferd:transferd /app
+# Create downloads and data directories with proper permissions
+RUN mkdir -p /app/downloads /app/data && chown -R transferd:transferd /app
 
 # Switch to non-root user
 USER transferd

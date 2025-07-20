@@ -6,6 +6,7 @@ services:
       - "8080:8080"    # Web interface and Socket.IO
     volumes:
       - ./downloads:/app/downloads  # Persistent downloads directory
+      - ./data:/app/data           # Persistent database directory
     environment:
       - PYTHONUNBUFFERED=1
     networks:

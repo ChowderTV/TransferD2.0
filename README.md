@@ -83,6 +83,74 @@ python3 transfer_app.py
 4. **Transfer**: Drag & drop files or browse to select
 5. **Message**: Type text/links and send
 
+## 🔄 How Text/Link Messaging Works
+
+### Complete Message Flow
+
+When you send a text message or link in TransferD2.0, here's the detailed step-by-step process:
+
+#### 1. **User Input** (Frontend)
+- Type your message/link in the textarea
+- Click "Send Text" button or press Ctrl+Enter
+- JavaScript validates a target device is selected
+
+#### 2. **Frontend Processing** (app.js)
+```javascript
+// Message gets sent via HTTP POST to backend
+fetch('/api/send_message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+        device: selectedDevice,
+        message: messageText
+    })
+});
+```
+
+#### 3. **Backend Validation** (app.py)
+- **Rate limiting**: Maximum 10 requests per minute per IP
+- **Authentication**: Validates password if set
+- **Input sanitization**: Removes dangerous characters, limits length
+- **Device validation**: Ensures target device exists and is reachable
+
+#### 4. **Cross-Device Transmission**
+- Your device sends HTTP POST to target device's `/api/receive_message` endpoint
+- Message transmitted directly over local network (no cloud services)
+- Includes authentication headers if password protection enabled
+
+#### 5. **Message Reception & Display**
+- Target device receives and validates the message
+- Broadcasts to all connected browser tabs via **SocketIO**
+- Message appears **instantly** on recipient's screen with timestamp
+- Real-time update without page refresh required
+
+### 🚨 Important: Messages Are Temporary
+
+**Key Difference from File Transfers:**
+- **Text/Links**: Displayed in real-time, **NOT stored permanently**
+- **Files**: Saved to downloads folder for permanent access
+
+**What this means:**
+- Messages only exist in browser memory and display
+- No database or file storage for text messages
+- If you close/refresh browser, message history is lost
+- Only the recipient sees the message when it's sent
+
+### 🔒 Security & Performance
+
+- **Local Network Only**: Messages never leave your network
+- **Rate Limiting**: Prevents spam (10 messages/minute max)
+- **Input Sanitization**: Protects against injection attacks
+- **Optional Passwords**: Add authentication for sensitive environments
+- **Real-time Delivery**: Instant transmission via WebSocket technology
+
+### 🌐 Network Requirements
+
+- **Same Network**: All devices must be on same Wi-Fi/LAN
+- **Auto-Discovery**: Devices find each other via mDNS/Zeroconf
+- **Manual Entry**: Can add devices by IP:Port if auto-discovery fails
+- **Port Access**: Ensure ports 8080/8081 are not blocked by firewall
+
 ## 🏗️ Architecture
 
 ### Web Version (Recommended)

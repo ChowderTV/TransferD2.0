@@ -20,6 +20,7 @@ from cryptography.fernet import Fernet
 from zeroconf import ServiceBrowser, ServiceInfo, Zeroconf
 import urllib.request
 import urllib.parse
+from database import TransferDatabase
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(32)  # Generate secure random key
@@ -165,10 +166,10 @@ class TransferDWeb:
     def __init__(self):
         self.local_ip = self.get_local_ip()
         self.port = 8080
-        self.devices = []
+        self.db = TransferDatabase()
         self.encryption_key = Fernet.generate_key()
         self.cipher = Fernet(self.encryption_key)
-        self.password = None
+        self.password = self.db.get_setting('password')
         self.zeroconf = None
         self.service_info = None
         
@@ -191,10 +192,13 @@ class TransferDWeb:
     
     def add_discovered_device(self, ip, port):
         device_info = f"{ip}:{port}"
-        if device_info not in self.devices and ip != self.local_ip:
-            self.devices.append(device_info)
-            socketio.emit('device_discovered', {'device': device_info})
-            self.log_status(f"Discovered device: {device_info}")
+        if ip != self.local_ip:
+            if self.db.add_device(device_info, is_manual=False):
+                socketio.emit('device_discovered', {'device': device_info})
+                self.log_status(f"Discovered device: {device_info}")
+            else:
+                # Device already exists, just update last seen
+                self.db.update_device_last_seen(device_info)
     
     def log_status(self, message):
         timestamp = time.strftime('%H:%M:%S')
@@ -263,7 +267,7 @@ def index():
 @app.route('/api/devices')
 def get_devices():
     return jsonify({
-        'devices': transfer_app.devices,
+        'devices': transfer_app.db.get_device_list(),
         'local_ip': transfer_app.local_ip,
         'port': transfer_app.port
     })
@@ -288,8 +292,7 @@ def add_device():
         validated_ip_port = validate_ip_port(ip_port_input)
         
         if validated_ip_port:
-            if validated_ip_port not in transfer_app.devices:
-                transfer_app.devices.append(validated_ip_port)
+            if transfer_app.db.add_device(validated_ip_port, is_manual=True):
                 transfer_app.log_status(f"Added device: {validated_ip_port}")
                 return jsonify({'success': True, 'device': validated_ip_port})
             else:
@@ -324,9 +327,11 @@ def set_password():
         
         if password:
             transfer_app.password = password
+            transfer_app.db.set_setting('password', password)
             transfer_app.log_status("Password protection enabled")
         else:
             transfer_app.password = None
+            transfer_app.db.set_setting('password', '')
             transfer_app.log_status("Password protection disabled")
         
         return jsonify({'success': True})
@@ -368,6 +373,15 @@ def upload_file():
         
         file_size = file_path.stat().st_size
         transfer_app.log_status(f"File received: {safe_filename} ({file_size/1024/1024:.1f}MB)")
+        
+        # Record transfer in database
+        transfer_app.db.add_transfer(
+            filename=safe_filename,
+            file_size=file_size,
+            sender_ip=client_ip,
+            transfer_type='upload',
+            status='completed'
+        )
         
         return jsonify({'success': True, 'filename': safe_filename})
     
@@ -441,6 +455,17 @@ def send_file():
         
         with urllib.request.urlopen(req, timeout=30) as response:
             transfer_app.log_status(f"File sent successfully: {safe_filename} to {validated_device}")
+            
+            # Record transfer in database
+            transfer_app.db.add_transfer(
+                filename=safe_filename,
+                file_size=len(file_content),
+                sender_ip=client_ip,
+                recipient_ip=validated_device,
+                transfer_type='send',
+                status='completed'
+            )
+            
             return jsonify({'success': True})
     
     except urllib.error.HTTPError as e:
@@ -508,6 +533,14 @@ def send_message():
                 with urllib.request.urlopen(req, timeout=10) as response:
                     transfer_app.log_status(f"Sent message to {validated_device}: {sanitized_message[:50]}...")
                     
+                    # Record sent message in database
+                    transfer_app.db.add_message(
+                        content=sanitized_message,
+                        sender_ip=client_ip,
+                        recipient_ip=validated_device,
+                        message_type='text'
+                    )
+                    
             except urllib.error.HTTPError as e:
                 if e.code == 401:
                     transfer_app.log_status("Authentication failed")
@@ -551,6 +584,13 @@ def receive_message():
         # Sanitize and broadcast message
         sanitized_text = sanitize_text_message(message_text)
         if sanitized_text:
+            # Store message in database
+            transfer_app.db.add_message(
+                content=sanitized_text,
+                sender_ip=client_ip,
+                message_type='text'
+            )
+            
             socketio.emit('message_received', {
                 'message': sanitized_text,
                 'timestamp': time.strftime('%H:%M:%S')
@@ -562,6 +602,48 @@ def receive_message():
             
     except Exception:
         return jsonify({'error': 'Failed to process message'}), 500
+
+@app.route('/api/messages/history')
+def get_message_history():
+    try:
+        # Rate limiting
+        client_ip = get_client_ip()
+        if not rate_limiter.is_allowed(client_ip):
+            return jsonify({'error': 'Rate limit exceeded'}), 429
+        
+        # Authentication check
+        if not check_authentication(transfer_app.password):
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        # Get query parameters
+        limit = min(int(request.args.get('limit', 50)), 100)  # Max 100 messages
+        
+        messages = transfer_app.db.get_recent_messages(limit)
+        return jsonify({'messages': messages})
+    
+    except Exception:
+        return jsonify({'error': 'Failed to get message history'}), 500
+
+@app.route('/api/transfers/history')
+def get_transfer_history():
+    try:
+        # Rate limiting
+        client_ip = get_client_ip()
+        if not rate_limiter.is_allowed(client_ip):
+            return jsonify({'error': 'Rate limit exceeded'}), 429
+        
+        # Authentication check
+        if not check_authentication(transfer_app.password):
+            return jsonify({'error': 'Authentication required'}), 401
+        
+        # Get query parameters
+        limit = min(int(request.args.get('limit', 50)), 100)  # Max 100 transfers
+        
+        transfers = transfer_app.db.get_transfer_history(limit)
+        return jsonify({'transfers': transfers})
+    
+    except Exception:
+        return jsonify({'error': 'Failed to get transfer history'}), 500
 
 @app.route('/downloads/<path:filename>')
 def download_file(filename):
@@ -620,6 +702,13 @@ def handle_message_text(data):
         sanitized_text = sanitize_text_message(message_text)
         
         if sanitized_text:
+            # Store message in database
+            transfer_app.db.add_message(
+                content=sanitized_text,
+                sender_ip=client_ip,
+                message_type='socket'
+            )
+            
             # Broadcast received message to all clients
             socketio.emit('message_received', {
                 'message': sanitized_text,

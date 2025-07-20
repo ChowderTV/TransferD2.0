@@ -9,6 +9,7 @@ class TransferDApp {
         this.initializeSocketIO();
         this.bindEvents();
         this.loadDevices();
+        this.loadMessageHistory();
     }
     
     initializeElements() {
@@ -48,6 +49,7 @@ class TransferDApp {
         
         this.socket.on('connect', () => {
             this.showToast('Connected to TransferD', 'success');
+            this.loadMessageHistory(); // Reload messages on reconnect
         });
         
         this.socket.on('device_discovered', (data) => {
@@ -373,6 +375,24 @@ class TransferDApp {
         }
     }
     
+    async loadMessageHistory() {
+        try {
+            const response = await fetch('/api/messages/history?limit=10');
+            if (response.ok) {
+                const data = await response.json();
+                data.messages.forEach(msg => {
+                    this.logStatus(`📨 ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''} (from ${msg.sender_ip})`, 
+                                 new Date(msg.timestamp).toLocaleTimeString());
+                });
+                if (data.messages.length > 0) {
+                    this.logStatus(`Loaded ${data.messages.length} recent messages`);
+                }
+            }
+        } catch (error) {
+            console.log('Could not load message history:', error);
+        }
+    }
+
     showToast(message, type = 'info') {
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
